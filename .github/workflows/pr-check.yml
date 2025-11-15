@@ -1,0 +1,112 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pr-validation:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR title format
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|perf|test|chore|ci)(\(.+\))?:\ .+ ]]; then
+            echo "❌ PR title must follow conventional commits format"
+            echo "Examples:"
+            echo "  feat: add QR code scanner"
+            echo "  fix(backend): resolve CORS issue"
+            echo "  docs: update setup guide"
+            exit 1
+          fi
+          echo "✅ PR title format is valid"
+
+      - name: Check for merge conflicts
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          if git merge-tree $(git merge-base HEAD origin/${{ github.base_ref }}) origin/${{ github.base_ref }} HEAD | grep -q '<<<<<'; then
+            echo "❌ This PR has merge conflicts"
+            exit 1
+          fi
+          echo "✅ No merge conflicts detected"
+
+      - name: Check file changes
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Check if package-lock.json is updated when package.json changes
+          if echo "$CHANGED_FILES" | grep -q "frontend/package.json"; then
+            if ! echo "$CHANGED_FILES" | grep -q "frontend/package-lock.json"; then
+              echo "⚠️ package.json changed but package-lock.json wasn't updated"
+            fi
+          fi
+
+      - name: Check PR size
+        run: |
+          ADDITIONS=$(jq -r '.pull_request.additions' "$GITHUB_EVENT_PATH")
+          DELETIONS=$(jq -r '.pull_request.deletions' "$GITHUB_EVENT_PATH")
+          TOTAL=$((ADDITIONS + DELETIONS))
+          
+          if [ $TOTAL -gt 1000 ]; then
+            echo "⚠️ This PR is large ($TOTAL lines changed)"
+            echo "Consider splitting into smaller PRs"
+          else
+            echo "✅ PR size is reasonable ($TOTAL lines changed)"
+          fi
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          severity: warning
+
+      - name: Check for TODO/FIXME
+        run: |
+          TODOS=$(grep -r "TODO\|FIXME" backend frontend --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.venv || true)
+          if [ -n "$TODOS" ]; then
+            echo "⚠️ Found TODO/FIXME comments:"
+            echo "$TODOS"
+          fi
+
+      - name: Check for console.log in frontend
+        run: |
+          CONSOLE_LOGS=$(grep -r "console\.log" frontend/src --exclude-dir=node_modules || true)
+          if [ -n "$CONSOLE_LOGS" ]; then
+            echo "⚠️ Found console.log statements:"
+            echo "$CONSOLE_LOGS"
+            echo "Consider removing or using proper logging"
+          fi
+
+  dependency-check:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Audit frontend dependencies
+        run: |
+          cd frontend
+          npm audit --audit-level=moderate || echo "⚠️ Security vulnerabilities found"
+
+      - name: Check for outdated dependencies
+        run: |
+          cd frontend
+          npm outdated || true
