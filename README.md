@@ -1,6 +1,6 @@
 # ZitiAcademy Course Attendance System
 
-![CI/CD Pipeline](https://github.com/YOUR_USERNAME/ZitiAcademy-Attendance/workflows/CI%2FCD%20Pipeline/badge.svg)
+![CI/CD Pipeline](https://github.com/ayointegral/ZitiAcademy-Attendance/workflows/CI%2FCD%20Pipeline/badge.svg)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
